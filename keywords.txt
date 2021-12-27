@@ -1,0 +1,66 @@
+
+
+
+#######################################
+# Syntax Coloring Map For RWS_NMEA
+#######################################
+# https://github.com/arduino/Arduino/wiki/Arduino-IDE-1.5:-Library-specification
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+CommaComms	KEYWORD1
+CC_Responder	KEYWORD1
+CC_FIFO	KEYWORD1
+CC_Serial	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+unpack754_32	KEYWORD2
+pack754_32	KEYWORD2
+notify	KEYWORD2
+command	KEYWORD2
+name	KEYWORD2
+update	KEYWORD2
+command_send	KEYWORD2
+command_print	KEYWORD2
+ui	KEYWORD2
+ui_print	KEYWORD2
+eol	KEYWORD2
+notify	KEYWORD2
+command	KEYWORD2
+push	KEYWORD2
+clear	KEYWORD2
+is_empty	KEYWORD2
+push	KEYWORD2
+pop	KEYWORD2
+read	KEYWORD2
+write	KEYWORD2
+available	KEYWORD2
+availableToWrite	KEYWORD2
+name	KEYWORD2
+update	KEYWORD2
+write	KEYWORD2
+
+#######################################
+# Instances (KEYWORD2)
+#######################################
+
+m_Responder	KEYWORD2
+m_fifo	KEYWORD2
+m_length	KEYWORD2
+m_buffer	KEYWORD2
+m_bUI	KEYWORD2
+m_bSOL	KEYWORD2
+buffer_start	KEYWORD2
+buffer_end	KEYWORD2
+data_start	KEYWORD2
+data_end	KEYWORD2
+m_serial	KEYWORD2
+m_id	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
