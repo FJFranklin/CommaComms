@@ -134,6 +134,12 @@ public:
   inline size_t eol() {
     return write("\n", 1);
   }
+  inline void writeIfAvailable(const char *str) {
+    size_t size = strlen(str);
+    size_t available = m_serial ? m_serial->availableForWrite() : m_usbser->availableForWrite();
+    if (size <= available)
+      write(str, size);
+  }
   inline void triple(const char *one, const char *two, const char *three) {
     write(one);
     write(two);

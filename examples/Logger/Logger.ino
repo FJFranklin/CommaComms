@@ -17,8 +17,9 @@ ShellCommand sc_logst("log",      "log start|stop|status",         "Start/Stop t
 class App : public Timer, public ShellHandler {
 private:
   ShellCommandList m_list;
-  Shell m_one;
-  Shell m_two;
+  Shell  m_one;
+  Shell  m_two;
+  Shell *m_last;
 
   bool bDemo;
 
@@ -32,6 +33,7 @@ public:
     m_list(this),
     m_one(Serial, m_list),
     m_two(Serial2, m_list),
+    m_last(0),
     bDemo(false)
   {
     pinMode(LED_BUILTIN, OUTPUT);
@@ -43,7 +45,13 @@ public:
     m_list.add(sc_lsdir);
     m_list.add(sc_demoj);
     m_list.add(sc_logst);
-    // ...
+
+    if (auto_start()) {
+      const char * log_name = log_name_next();
+      strcpy(log_filename_current, log_name);
+      log_name_increment();
+      m_SD.cmd_log_start(log_name, m_last);
+    }
   }
   ~App() {
     // ...
@@ -71,8 +79,17 @@ public:
     m_one.tick();
     m_two.tick();
 
-    while (Serial && Serial1.available()) {
-      Serial.write(Serial1.read());
+    m_SD.cmd_log_tick(m_last);
+
+    if (m_SD.logging()) {
+      char buffer[16];
+      int count = 0;
+      while (Serial1.available() && (count < 16)) {
+        buffer[count++] = Serial1.read();
+      }
+      if (count) {
+        m_SD.cmd_log_write(buffer, count, m_last);
+      }
     }
   }
 
@@ -106,6 +123,8 @@ public:
 
   virtual CommandError shell_command(Shell& origin, CommandArgs& args) {
     CommandError ce = ce_Okay;
+
+    m_last = &origin;
 
     if (args == "hello") {
       origin.write("Hi!\n");
@@ -146,12 +165,20 @@ public:
           if (m_SD.logging()) {
             origin.write("Logger is already active.\n");
           } else {
-            strcpy(log_filename_current, log_name_next());
+            origin.write("Logger: starting...\n");
+            const char * log_name = log_name_next();
+            strcpy(log_filename_current, log_name);
             log_name_increment();
+            m_SD.cmd_log_start(log_name, &origin);
           }
-        } else if (args == "stop")
-          m_SD.cmd_log_stop(&origin);
-        else if (args == "status") {
+        } else if (args == "stop") {
+          if (!m_SD.logging()) {
+            origin.write("Logger is not active.\n");
+          } else {
+            origin.write("Logger: stopping...\n");
+            m_SD.cmd_log_stop(&origin);
+          }
+        } else if (args == "status") {
           origin.triple("Logger: ", m_SD.logging() ? "Active" : "Inactive", "\n");
         } else
           ce = ce_IncorrectUsage;

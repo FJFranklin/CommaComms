@@ -205,13 +205,13 @@ public:
 
     if (!m_logfile.open(path, O_RDWR | O_CREAT | O_TRUNC)) {
       if (shell)
-	shell->triple("Error! Failed to open ", path, " for writing.\n");
+        shell->triple("Error! Failed to open ", path, " for writing.\n");
       return false;
     }
 
     if (!m_logfile.preAllocate(LOG_FILE_SIZE)) {
       if (shell)
-	shell->write("Error! preAllocate failed\n");
+        shell->write("Error! preAllocate failed\n");
       m_logfile.close();
       return false;
     }
@@ -225,7 +225,7 @@ public:
   void cmd_log_stop(Shell *shell = 0) {
     if (!m_bLogging) {
       if (shell)
-        shell->write("Logger is not active.\n");
+        shell->writeIfAvailable("Logger is not active.\n");
       return;
     }
 
@@ -243,7 +243,7 @@ public:
     size_t n = m_rbuf.bytesUsed();
     if ((n + m_logfile.curPosition()) > (LOG_FILE_SIZE - 20)) {
       if (shell)
-	shell->write("Logger: File full - quitting.\n");
+        shell->writeIfAvailable("Logger: File full - quitting.\n");
       cmd_log_stop();
       return;
     }
@@ -252,18 +252,19 @@ public:
 
     if (m_rbuf.getWriteError()) {
       if (shell)
-        shell->write("Logger: write error (data too fast for logging)\n");
+        shell->writeIfAvailable("Logger: write error (data too fast for logging)\n");
     }
   }
 
-  void cmd_log_tick() {
+  void cmd_log_tick(Shell *shell = 0) {
     if (!m_bLogging)
       return;
 
     if (m_rbuf.bytesUsed() >= 512 && !m_logfile.isBusy()) {
       if (512 != m_rbuf.writeOut(512)) {
-	cmd_log_stop();
-	return;
+        if (shell)
+          shell->writeIfAvailable("Logger: write error - quitting.");
+        cmd_log_stop();
       }
     }
   }
