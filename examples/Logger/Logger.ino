@@ -11,8 +11,12 @@ ShellCommand sc_lnext("log-next", "log-next [--reset]",            "Next filenam
 ShellCommand sc_lauto("log-auto", "log-auto [--enable|--disable]", "Whether to start logging automatically on power-up.");
 ShellCommand sc_sdinf("sd-info",  "sd-info",                       "Give details of SD card.");
 ShellCommand sc_lsdir("ls",       "ls",                            "List files on the device.");
+ShellCommand sc_mkdir("mkdir",    "mkdir <path>",                  "Create folder at path.");
+ShellCommand sc_rmfle("rm",       "rm <path>",                     "Delete specified file.");
+ShellCommand sc_catfl("cat",      "cat <path>",                    "Write contents of specified file.");
 ShellCommand sc_demoj("demo",     "demo [--enable|--disable]",     "Generate junk data stream on Serial3.");
 ShellCommand sc_logst("log",      "log start|stop|status",         "Start/Stop the logger, or check status.");
+ShellCommand sc_trunc("truncate", "truncate <path>",               "Truncate preallocated log file after restart.");
 
 class App : public Timer, public ShellHandler {
 private:
@@ -43,8 +47,12 @@ public:
     m_list.add(sc_lauto);
     m_list.add(sc_sdinf);
     m_list.add(sc_lsdir);
+    m_list.add(sc_mkdir);
+    m_list.add(sc_rmfle);
+    m_list.add(sc_catfl);
     m_list.add(sc_demoj);
     m_list.add(sc_logst);
+    m_list.add(sc_trunc);
 
     if (auto_start()) {
       const char * log_name = log_name_next();
@@ -150,7 +158,25 @@ public:
     } else if (args == "sd-info") {
       m_SD.cmd_sd_info(origin);
     } else if (args == "ls") {
-      m_SD.cmd_ls(origin);
+      if (++args == "")
+        m_SD.cmd_ls(origin);
+      else
+        m_SD.cmd_ls(origin, args.c_str());
+    } else if (args == "mkdir") {
+      if (++args == "")
+        ce = ce_IncorrectUsage;
+      else
+        m_SD.cmd_mkdir(args.c_str(), &origin);
+    } else if (args == "rm") {
+      if (++args == "")
+        ce = ce_IncorrectUsage;
+      else
+        m_SD.cmd_rm(origin, args.c_str());
+    } else if (args == "cat") {
+      if (++args == "")
+        ce = ce_IncorrectUsage;
+      else
+        m_SD.cmd_cat(origin, args.c_str());
     } else if (args == "demo") {
       if (++args != "") {
         if (args == "--enable")
@@ -185,6 +211,11 @@ public:
       } else {
         ce = ce_IncorrectUsage;
       }
+    } else if (args == "truncate") {
+      if (++args == "")
+        ce = ce_IncorrectUsage;
+      else
+        m_SD.cmd_truncate(origin, args.c_str());
     } else {
       origin.write("Oops! Command: \"");
       origin.write(args.c_str());

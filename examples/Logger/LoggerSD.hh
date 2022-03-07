@@ -20,6 +20,7 @@
 class LoggerSD {
 private:
   bool m_bLogging;
+  bool m_bHaveMeta;
 
   SdioConfig m_config;
 
@@ -33,11 +34,18 @@ private:
   MbrSector_t m_mbr;
 
   FsFile m_logfile;
+  FsFile m_meta;
+
+  uint32_t m_logfile_size;
+
   RingBuf<FsFile, RING_BUF_CAPACITY> m_rbuf;
 
 public:
+  inline bool logging() const { return m_bLogging; }
+
   LoggerSD() :
     m_bLogging(false),
+    m_bHaveMeta(false),
     m_config(FIFO_SDIO)
   {
     // ...
@@ -52,10 +60,10 @@ public:
 
     if (!m_sd.cardBegin(m_config)) {
       if (shell) {
-	shell->write("SD: initialization failed.\n");
-	if (isSpi(m_config)) {
-	  shell->write("SD is a SPI device - check CS pin, etc.\n");
-	}
+        shell->write("SD: initialization failed.\n");
+        if (isSpi(m_config)) {
+          shell->write("SD is a SPI device - check CS pin, etc.\n");
+        }
       }
       return false;
     }
@@ -179,13 +187,173 @@ public:
     } else {
       origin.write("SD: File\n");
     }
+    file.close();
 
     m_sd.ls(path, LS_DATE | LS_SIZE);
 
     return true;
   }
 
-  inline bool logging() const { return m_bLogging; }
+  bool cmd_mkdir(const char *path, Shell *shell) {
+    if (!init(0, shell))
+      return false;
+
+    if (!m_sd.volumeBegin()) {
+      if (shell)
+        shell->write("SD: Error! Filesystem error\n");
+      return false;
+    }
+
+    if (m_sd.exists(path)) {
+      FsFile file;
+      if (!file.open(path, O_RDONLY)) {
+        if (shell)
+          shell->triple("SD: Error! Unable to read '", path, "'\n");
+        return false;
+      }
+      bool bIsFolder = file.isDir();
+      if (!bIsFolder && shell) 
+        shell->triple("SD: Error! '", path, "' exists and is not a folder\n");
+      file.close();
+      return bIsFolder;
+    }
+
+    bool bCreated = m_sd.mkdir(path, true);
+
+    if (!bCreated && shell) 
+      shell->triple("SD: Error! Unable to create '", path, "'\n");
+
+    return bCreated;
+  }
+
+  bool cmd_rm(Shell& origin, const char *path) {
+    if (logging()) {
+      origin.write("SD: Logging is active; unable to delete file\n");
+      return false;
+    }
+
+    if (!init(origin))
+      return false;
+
+    if (!m_sd.volumeBegin()) {
+      origin.write("SD: Error! Filesystem error\n");
+      return false;
+    }
+
+    if (!m_sd.exists(path)) {
+      origin.triple("SD: Error! '", path, "' not found\n");
+      return false;
+    }
+
+    m_sd.remove(path);
+ 
+    return true;
+  }
+
+  bool cmd_cat(Shell& origin, const char *path) {
+    if (logging()) {
+      origin.write("SD: Logging is active; unable to cat file\n");
+      return false;
+    }
+
+    if (!init(origin))
+      return false;
+
+    if (!m_sd.volumeBegin()) {
+      origin.write("SD: Error! Filesystem error\n");
+      return false;
+    }
+
+    if (!m_sd.exists(path)) {
+      origin.triple("SD: Error! '", path, "' not found\n");
+      return false;
+    }
+
+    FsFile file;
+    if (!file.open(path, O_RDONLY)) {
+      origin.triple("SD: Error! Unable to read '", path, "'\n");
+      return false;
+    }
+
+    if (file.isDir()) {
+      origin.write("SD: Error! This is a folder\n");
+      return false;
+    }
+    origin.triple("SD: File '", path, "':\n");
+
+    while (file.available()) {
+      int ic = file.read();
+      if (ic < 0)
+        break;
+      char c = ic;
+      origin.write(&c, 1);
+    }
+    file.close();
+
+    origin.write("\nSD: === Done ===\n");
+ 
+    return true;
+  }
+
+  bool cmd_truncate(Shell& origin, const char *path) {
+    if (logging()) {
+      origin.write("SD: Logging is active; unable to truncate file\n");
+      return false;
+    }
+
+    if (!init(origin))
+      return false;
+
+    if (!m_sd.volumeBegin()) {
+      origin.write("SD: Error! Filesystem error\n");
+      return false;
+    }
+
+    if (!m_sd.exists(path)) {
+      origin.triple("SD: Error! '", path, "' not found\n");
+      return false;
+    }
+
+    bool bMetaValid = false;
+    unsigned long meta_length = 0;
+
+    if (m_sd.exists("meta"))
+      if (m_sd.chdir("meta")) {
+        FsFile meta;
+        if (meta.open(path, O_RDONLY))
+          if (meta.size() == 15) {
+            char buf[16];
+            for (int i = 0; i < 15; i++)
+              buf[i] = meta.read();
+            buf[15] = 0;
+            meta.close();
+            if (sscanf(buf, "%lu", &meta_length) == 1) {
+              bMetaValid = true;
+            }
+          }
+        m_sd.chdir();
+      }
+    if (!bMetaValid) {
+      origin.write("SD: Error! Unable to read 'meta' data - unable to truncate\n");
+      return false;
+    }
+
+    FsFile file;
+    if (!file.open(path, O_RDWR)) {
+      origin.triple("SD: Error! Unable to open '", path, "'\n");
+      return false;
+    }
+    if (file.size() > meta_length) {
+      origin.write("SD: Truncating log file...\n");
+      file.rewind();
+      while (meta_length-- > 0)
+        file.read();
+      file.truncate();
+    }
+    file.close();
+ 
+    return true;
+  }
 
   bool cmd_log_start(const char *path, Shell *shell = 0) {
     if (m_bLogging) {
@@ -219,6 +387,17 @@ public:
     m_rbuf.begin(&m_logfile);
 
     m_bLogging = true;
+
+    if (cmd_mkdir("meta", shell)) {
+      m_sd.chdir("meta");
+
+      if (m_meta.open(path, O_RDWR | O_CREAT | O_TRUNC)) {
+        m_bHaveMeta = true;
+      }
+      m_sd.chdir();
+    }
+    m_logfile_size = 0;
+
     return true;
   }
 
@@ -234,6 +413,11 @@ public:
     m_logfile.close();
 
     m_bLogging = false;
+
+    if (m_bHaveMeta) {
+      m_meta.close();
+      m_bHaveMeta = false;
+    }
   }
 
   void cmd_log_write(const char *data, int length, Shell *shell = 0) {
@@ -265,6 +449,13 @@ public:
         if (shell)
           shell->writeIfAvailable("Logger: write error - quitting.");
         cmd_log_stop();
+      } else if (m_bHaveMeta) {
+        m_logfile_size += 512;
+        char buf[16];
+        sprintf(buf, "%15lu", m_logfile_size);
+        m_meta.rewind();
+        m_meta.write(buf);
+        m_meta.flush();
       }
     }
   }
