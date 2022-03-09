@@ -13,54 +13,93 @@ CommaComms	KEYWORD1
 CC_Responder	KEYWORD1
 CC_FIFO	KEYWORD1
 CC_Serial	KEYWORD1
+Shell	KEYWORD1
+ShellHandler	KEYWORD1
+ShellCommandList	KEYWORD1
+ShellCommand	KEYWORD1
+CommandArgs	KEYWORD1
+CommandError	KEYWORD1
+InputState	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
 #######################################
 
-unpack754_32	KEYWORD2
-pack754_32	KEYWORD2
-notify	KEYWORD2
-command	KEYWORD2
-name	KEYWORD2
-update	KEYWORD2
-command_send	KEYWORD2
-command_print	KEYWORD2
-ui	KEYWORD2
-ui_print	KEYWORD2
-eol	KEYWORD2
-notify	KEYWORD2
-command	KEYWORD2
-push	KEYWORD2
-clear	KEYWORD2
-is_empty	KEYWORD2
-push	KEYWORD2
-pop	KEYWORD2
-read	KEYWORD2
-write	KEYWORD2
+active	KEYWORD2
+add	KEYWORD2
 available	KEYWORD2
 availableToWrite	KEYWORD2
+clear	KEYWORD2
+command	KEYWORD2
+command_print	KEYWORD2
+command_send	KEYWORD2
+c_str	KEYWORD2
+default_handler	KEYWORD2
+eol	KEYWORD2
+first	KEYWORD2
+is_empty	KEYWORD2
+lookup	KEYWORD2
 name	KEYWORD2
+next	KEYWORD2
+notify	KEYWORD2
+pack754_32	KEYWORD2
+pop	KEYWORD2
+push	KEYWORD2
+read	KEYWORD2
+set_default_handler	KEYWORD2
+shell_command	KEYWORD2
+tick	KEYWORD2
+triple	KEYWORD2
+ui	KEYWORD2
+ui_print	KEYWORD2
+unpack754_32	KEYWORD2
 update	KEYWORD2
 write	KEYWORD2
+writeIfAvailable	KEYWORD2
 
 #######################################
 # Instances (KEYWORD2)
 #######################################
 
-m_Responder	KEYWORD2
-m_fifo	KEYWORD2
-m_length	KEYWORD2
-m_buffer	KEYWORD2
-m_bUI	KEYWORD2
-m_bSOL	KEYWORD2
-buffer_start	KEYWORD2
 buffer_end	KEYWORD2
-data_start	KEYWORD2
+buffer_start	KEYWORD2
 data_end	KEYWORD2
-m_serial	KEYWORD2
+data_start	KEYWORD2
+m_Responder	KEYWORD2
+m_arg	KEYWORD2
+m_buffer	KEYWORD2
+m_bSOL	KEYWORD2
+m_bUI	KEYWORD2
+m_command	KEYWORD2
+m_command_list	KEYWORD2
+m_default_handler	KEYWORD2
+m_description	KEYWORD2
+m_fifo	KEYWORD2
+m_handler	KEYWORD2
+m_help	KEYWORD2
 m_id	KEYWORD2
+m_index	KEYWORD2
+m_length	KEYWORD2
+m_list_first	KEYWORD2
+m_list_last	KEYWORD2
+m_next	KEYWORD2
+m_serial	KEYWORD2
+m_state	KEYWORD2
+m_swap	KEYWORD2
+m_usage	KEYWORD2
+m_usbser	KEYWORD2
+
 
 #######################################
 # Constants (LITERAL1)
 #######################################
+
+MultiShell_BufferSize	LITERAL1
+ce_Okay	LITERAL1
+ce_IncorrectUsage	LITERAL1
+ce_UnhandledCommand	LITERAL1
+ce_OtherError	LITERAL1
+is_Start	LITERAL1
+is_Discard	LITERAL1
+is_Processing	LITERAL1
+is_String	LITERAL1
