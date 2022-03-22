@@ -1,11 +1,12 @@
 /* -*- mode: c++ -*-
  * 
- * Copyright 2020-21 Francis James Franklin
+ * Copyright 2020-22 Francis James Franklin
  * 
  * Open Source under the MIT License - see LICENSE in the project's root folder
  */
 
 #include "config.hh"
+#include "MultiShell.hh"
 #include "Timer.hh"
 #include "CC_Serial.hh"
 #include "Encoders.hh"
@@ -16,8 +17,18 @@
 
 #include "Claw.hh"
 
-class Central : public Timer, public CommaComms::CC_Responder {
+#ifdef USE_SERIAL_5
+/* Define globally
+ */
+ShellCommand sc_hello("hello",    "hello",                         "Say hi :-)");
+#endif
+
+class Central : public Timer, public CommaComms::CC_Responder, public ShellHandler {
 private:
+#ifdef USE_SERIAL_5
+  ShellCommandList m_list;
+  Shell  m_five;
+#endif
   CC_Serial s0;
   CC_Serial s2;
 
@@ -31,7 +42,15 @@ private:
 
 public:
   Central() :
+#ifdef USE_SERIAL_5
+    m_list(this),
+    m_five(Serial5, m_list),
+#endif
+#ifndef USE_SERIAL_4
     s0(Serial, '0', this),
+#else
+    s0(Serial4, '4', this),
+#endif
     s2(Serial2, '2', this),
 #ifdef ENABLE_GPS
     gps(new Adafruit_GPS(&Serial3)),
@@ -40,6 +59,9 @@ public:
     reportMode(0),
     bReportGenerated(false)
   {
+#ifdef USE_SERIAL_5
+    m_list.add(sc_hello);
+#endif
 #ifdef ENABLE_GPS
     gps->begin(9600);
     gps->sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
@@ -283,6 +305,9 @@ public:
   virtual void tick() {
     s0.update(); // important: housekeeping
     s2.update(); // important: housekeeping
+#ifdef USE_SERIAL_5
+    m_five.tick();
+#endif
 #ifdef ENABLE_GPS
     if (gps->available()) {
       gps->read();
@@ -297,17 +322,39 @@ public:
     }
 #endif
   }
+  virtual CommandError shell_command(Shell& origin, CommandArgs& args) {
+    CommandError ce = ce_Okay;
+#ifdef USE_SERIAL_5
+    if (args == "hello") {
+      origin.write("Hi!\n");
+    }
+#endif
+    return ce;
+  }
 };
 
 void setup() {
+#ifndef USE_SERIAL_4
   while (millis() < 500) {
     if (Serial) break;
   }
   Serial.begin(115200);
+#else
+  while (millis() < 500) {
+    if (Serial4) break;
+  }
+  Serial4.begin(115200);
+#endif
   while (millis() < 500) {
     if (Serial2) break;
   }
   Serial2.begin(115200);
+#ifdef USE_SERIAL_5
+  while (millis() < 500) {
+    if (Serial5) break;
+  }
+  Serial5.begin(115200);
+#endif
 
   s_roboclaw_init(); // Setup RoboClaw
 

@@ -1,4 +1,4 @@
-/* Copyright 2020-21 Francis James Franklin
+/* Copyright 2020-22 Francis James Franklin
  * 
  * Open Source under the MIT License - see LICENSE in the project's root folder
  */
@@ -7,6 +7,9 @@
 #define cariot_config_hh
 
 #include <Arduino.h>
+
+//#define USE_SERIAL_4      // output data to Serial4 instead of Serial
+//#define USE_SERIAL_5      // enable shell on Serial5
 
 #define ENABLE_ROBOCLAW   // motor control using RoboClaw; comment to disable
 #define ENABLE_PID        // PID motor control - experimental
