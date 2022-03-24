@@ -60,6 +60,7 @@ RoboClaw roboclaw(config_serial(), 10000);
 #endif
 
 static bool s_claw_writable = false;
+static const char *s_claw_error = "Not connected - motor control disabled.";
 
 static bool s_roboclaw_init() {
   const uint8_t address = 0x80;
@@ -70,7 +71,8 @@ static bool s_roboclaw_init() {
   s_claw_writable = bM1 && bM2;
 #endif
   if (!s_claw_writable) {
-    Serial.println("RoboClaw not connected - disabling motor control.");
+    Serial.print("RoboClaw: ");
+    Serial.println(s_claw_error);
   }
   return s_claw_writable;
 }
