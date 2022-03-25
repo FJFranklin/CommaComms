@@ -15,6 +15,11 @@
 #include <Adafruit_GPS.h>
 #endif
 
+#ifdef PBL
+#undef PBL
+#endif
+#define PBL 64 // print buffer length
+
 #include "Claw.hh"
 
 /* Define globally
@@ -26,6 +31,7 @@ ShellCommand sc_rmode("report",   "report [--list] [<mode>]",      "Get/Set/List
 ShellCommand sc_opmod("op-mode",  "op-mode [--list] [<mode>]",     "Get/Set/List operating mode(s).");
 ShellCommand sc_shsum("summary",  "summary [on|off]",              "Print summary to shell.");
 ShellCommand sc_motor("M",        "M [<speed> [<speed>]]",         "Set motor speed(s).");
+ShellCommand sc_znpid("ZN",       "ZN [<Ku> [<Tu>]]",              "PID test, opt. with Ziegler-Nichols.");
 
 const char *s_report_mode[] = {
   "  0 (none)\n",
@@ -51,7 +57,7 @@ private:
   CC_Serial s2;
   CC_Serial s4;
 
-  char m_buffer[64]; // temporary print buffer
+  char m_buffer[PBL]; // temporary print buffer
 
 #ifdef ENABLE_GPS
   Adafruit_GPS *gps;
@@ -87,6 +93,7 @@ public:
     m_list.add(sc_opmod);
     m_list.add(sc_shsum);
     m_list.add(sc_motor);
+    m_list.add(sc_znpid);
 
 #ifdef ENABLE_PID
     opMode = 1;
@@ -228,13 +235,23 @@ public:
     TB_Params.actual = (TB_Params.actual_FL - TB_Params.actual_BR) / 2.0;
 
     if ((reportMode == 2) && (TB_Params.actual_FL || TB_Params.actual_BL || TB_Params.actual_FR || TB_Params.actual_BR || TB_Params.actual)) {
-      snprintf(m_buffer, 64, "%6.2f %6.2f %6.2f %6.2f %6.2f", TB_Params.actual_FL, TB_Params.actual_BL, TB_Params.actual_FR, TB_Params.actual_BR, TB_Params.actual);
+      snprintf(m_buffer, PBL, "%6.2f %6.2f %6.2f %6.2f %6.2f", TB_Params.actual_FL, TB_Params.actual_BL, TB_Params.actual_FR, TB_Params.actual_BR, TB_Params.actual);
       s4.ui_print(m_buffer);
       s4.ui();
     }
 
     if (opMode == 1) {
       s_buggy_update(10); // see Claw.hh
+    }
+    if (opMode == 3) {
+      if (!s_test_update(TB_Params.actual_FR, 10)) {
+        s_roboclaw_set_M1(0); // right
+        opMode = 2;
+        if (m_last) {
+          m_last->write("done!\n");
+          s_test_plot(*m_last, m_buffer);
+        }
+      }
     }
   }
 
@@ -257,7 +274,7 @@ public:
       moving = vs1 || vs2 || vs3 || vs4;
 
       if (moving || MSpeed || M1_actual || M2_actual) {
-        snprintf(m_buffer, 64, "M: %d {%d %d} v: %.2f %.2f %.2f %.2f km/h", MSpeed, M1_actual, M2_actual, vs1, vs2, vs3, vs4);
+        snprintf(m_buffer, PBL, "M: %d {%d %d} v: %.2f %.2f %.2f %.2f km/h", MSpeed, M1_actual, M2_actual, vs1, vs2, vs3, vs4);
         s2.command_print(m_buffer);
 
         if (bShellSummary && m_last) {
@@ -274,7 +291,7 @@ public:
 
 #ifdef ENABLE_GPS
   inline const char *gps_time() {
-    snprintf(m_buffer, 64, "%02d/%02d/20%02d,%02d.%02d,%02d.%04u,",
+    snprintf(m_buffer, PBL, "%02d/%02d/20%02d,%02d.%02d,%02d.%04u,",
       (int) gps->day,
       (int) gps->month,
       (int) gps->year,
@@ -291,7 +308,7 @@ public:
     int minutes = (int) coord;
     coord = (coord - (float) minutes) * 60;
 
-    snprintf(m_buffer, 64, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lat ? gps->lat : ((gps->latitudeDegrees < 0) ? 'S' : 'N'));
+    snprintf(m_buffer, PBL, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lat ? gps->lat : ((gps->latitudeDegrees < 0) ? 'S' : 'N'));
     return m_buffer;
   }
   inline const char *gps_longitude() {
@@ -301,11 +318,11 @@ public:
     int minutes = (int) coord;
     coord = (coord - (float) minutes) * 60;
 
-    snprintf(m_buffer, 64, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lon ? gps->lon : ((gps->longitudeDegrees < 0) ? 'W' : 'E'));
+    snprintf(m_buffer, PBL, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lon ? gps->lon : ((gps->longitudeDegrees < 0) ? 'W' : 'E'));
     return m_buffer;
   }
   inline const char *gps_lat_lon() {
-    snprintf(m_buffer, 64, "%.6f,%.6f,", gps->latitudeDegrees, gps->longitudeDegrees);
+    snprintf(m_buffer, PBL, "%.6f,%.6f,", gps->latitudeDegrees, gps->longitudeDegrees);
     return m_buffer;
   }
 #endif // ENABLE_GPS
@@ -320,7 +337,7 @@ public:
 
     const char *csv_format = "%3d,%3d,%3d,%.3f,%.3f,%.3f,%.3f";
     const char *ext_format = "M: %d {%d %d} v: %.2f %.2f %.2f %.2f km/h";
-    snprintf(m_buffer, 64, bCSV ? csv_format : ext_format, MSpeed, M1_actual, M2_actual, vs1, vs2, vs3, vs4);
+    snprintf(m_buffer, PBL, bCSV ? csv_format : ext_format, MSpeed, M1_actual, M2_actual, vs1, vs2, vs3, vs4);
     return m_buffer;
   }
   inline const char *summary_report() {
@@ -596,6 +613,39 @@ public:
           origin.write("Expected two integers\n");
           ce = ce_IncorrectUsage;
         }
+      }
+    }
+    else if (args == "ZN") {
+      float Ku = 1;
+      float Tu_ms = 0;
+      ++args;
+      if (args != "") {
+        if (sscanf(args.c_str(), "%f", &Ku) == 1) {
+          if (Ku <= 0) {
+            origin.write("Expected Ku > 0\n");
+            ce = ce_IncorrectUsage;
+          }
+          ++args;
+          if (args != "") {
+            if (sscanf(args.c_str(), "%f", &Tu_ms) == 1) {
+              if (Tu_ms <= 0) {
+                origin.write("Expected Tu_ms > 0\n");
+                ce = ce_IncorrectUsage;
+              }
+            } else {
+              origin.write("Expected float\n");
+              ce = ce_IncorrectUsage;
+            }
+          }
+        } else {
+          origin.write("Expected float\n");
+          ce = ce_IncorrectUsage;
+        }
+      }
+      if ((ce == ce_Okay) && (opMode == 2)) {
+        origin.write("Testing... ");
+        s_test_init(Ku, Tu_ms);
+        opMode = 3;
       }
     }
     return ce;

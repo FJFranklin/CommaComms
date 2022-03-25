@@ -12,7 +12,7 @@ struct mc_params {
   float P;
   float I;
   float D;
-} MC_Params = { 1.0, 0.0, 0.0 };
+} MC_Params = { 2.4, 0.043636, 88.0 };
 
 struct tb_params {
   float slip;
@@ -28,6 +28,22 @@ struct tb_params {
   float I;
   float D;
 } TB_Params = { 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0 };
+
+#ifdef TDL
+#undef TDL
+#endif
+#define TDL (PBL-6) // test data length
+
+struct test_data {
+  float data[TDL];
+  float P;
+  float I;
+  float D;
+  float kmh_target;
+  float kmh_error_old;
+  float kmh_error_integral;
+  int count;
+} TestData;
 
 #ifdef ENABLE_ROBOCLAW
 #include <RoboClaw.h>
@@ -65,7 +81,7 @@ static const char *s_claw_error = "Not connected - motor control disabled.";
 static bool s_roboclaw_init() {
   const uint8_t address = 0x80;
 #ifdef ENABLE_ROBOCLAW
-  roboclaw.begin(38400);
+  roboclaw.begin(115200); // 38400);
   bool bM1 = roboclaw.ForwardM1(address, 0);
   bool bM2 = roboclaw.ForwardM2(address, 0);
   s_claw_writable = bM1 && bM2;
@@ -203,6 +219,100 @@ void s_buggy_update(float dt_ms) {
 //Serial.print(' ');
   MC_Right.update(pwm_estimate, TB_Params.actual_FR, dt_ms);
 //Serial.println();
+}
+
+static void s_test_init(float Ku, float Tu_ms = 0) {
+  if (Tu_ms == 0) {
+    TestData.P = Ku;
+    TestData.I = 0;
+    TestData.D = 0;
+  } else {
+    /* Ziegler-Nichols
+     */
+
+    /* Classic PID
+    TestData.P = 0.6 * Ku;
+    TestData.I = 1.2 * Ku / Tu_ms;
+    TestData.D = 0.075 * Ku * Tu_ms; */
+
+    /* Pessen Integral
+    TestData.P = 0.7 * Ku;
+    TestData.I = 1.75 * Ku / Tu_ms;
+    TestData.D = 0.105 * Ku * Tu_ms; */
+
+    // No overshoot
+    TestData.P = 0.2 * Ku;
+    TestData.I = 0.4 * Ku / Tu_ms;
+    TestData.D = 2.0 * Ku * Tu_ms / 30;
+  }
+  TestData.kmh_target = 10;
+  TestData.kmh_error_old = 0;
+  TestData.kmh_error_integral = 0;
+  TestData.count = 0;
+}
+
+static bool s_test_update(float kmh_actual, float dt_ms) { // returns true when test ends
+  if (TestData.count >= TDL)
+    return false;
+
+  TestData.data[TestData.count++] = kmh_actual;
+
+  float kmh_error = TestData.kmh_target - kmh_actual;
+  float error_difference = (kmh_error - TestData.kmh_error_old) / dt_ms;
+
+  TestData.kmh_error_integral += ((kmh_error + TestData.kmh_error_old) / 2) * dt_ms;
+  TestData.kmh_error_old = kmh_error;
+
+  float pwm = TestData.P * kmh_error + TestData.I * TestData.kmh_error_integral + TestData.D * error_difference;
+
+  s_roboclaw_set_M1(pwm);
+
+  return true;
+}
+
+static void s_test_plot(Shell& shell, char buffer[PBL]) {
+  int data_max = 0;
+  int data_min = 0;
+
+  for (int i = 0; i < TDL; i++) {
+    int datum = TestData.data[i];
+
+    if (data_max < datum)
+      data_max = datum;
+    if (data_min > datum)
+      data_min = datum;
+  }
+
+  data_min = floor(data_min / 10.0) * 10;
+  data_max =  ceil(data_max / 10.0) * 10;
+
+  snprintf(buffer, PBL, "      P=%f, I=%f, D=%f\n", TestData.P, TestData.I, TestData.D);
+  shell.write(buffer);
+
+  for (int r = data_max; r >= data_min; r--) {
+    if (!r) {
+      snprintf(buffer, PBL, "  0+\n");
+    } else if (r % 10 == 0) {
+      snprintf(buffer, PBL, "%3d|\n", r);
+    } else {
+      snprintf(buffer, PBL, "   |\n");
+    }
+
+    char *ptr = buffer + 4;
+
+    for (int c = 0; c < TDL; c++) {
+      int datum = TestData.data[c];
+      if (datum == r)
+        *ptr = '*';
+      else
+        *ptr = r ? ' ' : '-';
+      ++ptr;
+    }
+    *ptr = '\n';
+    *++ptr = 0;
+
+    shell.write(buffer);
+  }
 }
 
 #endif /* !cariot_claw_hh */
