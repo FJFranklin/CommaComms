@@ -12,13 +12,119 @@
 #include <sdios.h>
 #include <RingBuf.h>
 
-#include "MultiShell.hh"
-
 #define LOG_FILE_SIZE     150000000
 #define RING_BUF_CAPACITY    204800
 
+class SDSerial : public VirtualSerial {
+private:
+  FsFile  m_file;
+  bool    m_bDone;
+public:
+  SDSerial() : m_bDone(true)
+  {
+    // ...
+  }
+
+  virtual ~SDSerial();
+
+  virtual bool begin(const char *& status, unsigned long baud);
+
+  bool open(Shell& origin, ShellBuffer& B, const char *path) {
+    if (!m_file.open(path, O_RDONLY)) {
+      B << "SD: Error! Unable to read '" << path << "'";
+      origin << B << 0;
+      return false;
+    }
+    if (m_file.isDir()) {
+      origin << "SD: Error! This is a folder" << 0;
+      m_file.close();
+      return false;
+    }
+    m_bDone = false;
+    return true;
+  }
+  inline int sync_read_begin() {
+    int afr = m_in.available();
+    if (!afr) {
+      sync_read();
+      afr = m_in.available();
+    }
+    return afr;
+  }
+  inline int read(int& afr) {
+    int ic = VirtualSerial::read();
+    if (ic > -1)
+      --afr;
+    return ic;
+  }
+  inline bool done() const { return m_bDone && m_in.is_empty(); }
+
+  virtual void sync_read();
+  virtual void sync_write();
+};
+
+SDSerial::~SDSerial() {
+  // ...
+}
+
+bool SDSerial::begin(const char *& status, unsigned long baud) {
+  return true;
+}
+
+void SDSerial::sync_read() {
+  if (m_bDone) return;
+
+  int afw = m_in.availableForWrite();
+  int count = m_file.read(m_buffer_out, afw); // use the protected out-buffer for convenience
+
+  if (count > 0) {
+    m_in.write(m_buffer_out, count);
+  }
+  if (count < afw) {
+    m_file.close();
+    m_bDone = true;
+  }
+}
+
+void SDSerial::sync_write() {
+  // ...
+}
+
+class LoggerCatTask : public Task {
+private:
+  SDSerial    m_file;
+public:
+  LoggerCatTask() {
+    // ...
+  }
+  virtual ~LoggerCatTask() {
+    // ...
+  }
+  bool assign(Shell& origin, ShellBuffer& B, const char *path) {
+    return m_file.open(origin, B, path);
+  }
+  virtual bool process_task(ShellStream& stream, int& afw) { // returns true on completion of task
+    int afr = m_file.sync_read_begin();
+
+    while (afr && afw) {
+      int ic = m_file.read(afr);
+      if (ic < 0)
+        break;
+      char c = ic;
+      stream.write(c, afw);
+    }
+    return m_file.done();
+  }
+};
+
 class LoggerSD {
 private:
+  LoggerCatTask             m_cat_task;
+  TaskOwner<LoggerCatTask>  m_cat_owner;
+
+  char        m_buftmp[128];
+  ShellBuffer m_B;
+
   bool m_bLogging;
   bool m_bHaveMeta;
 
@@ -44,11 +150,12 @@ public:
   inline bool logging() const { return m_bLogging; }
 
   LoggerSD() :
+    m_B(m_buftmp, 128),
     m_bLogging(false),
     m_bHaveMeta(false),
     m_config(FIFO_SDIO)
   {
-    // ...
+    m_cat_owner.push(m_cat_task, true);
   }
 
   ~LoggerSD() {
@@ -60,9 +167,9 @@ public:
 
     if (!m_sd.cardBegin(m_config)) {
       if (shell) {
-        shell->write("SD: initialization failed.\n");
+        *shell << "SD: initialization failed." << 0;
         if (isSpi(m_config)) {
-          shell->write("SD is a SPI device - check CS pin, etc.\n");
+          *shell << "SD is a SPI device - check CS pin, etc." << 0;
         }
       }
       return false;
@@ -72,13 +179,13 @@ public:
 
     if (!m_sd.card()->readCID(&m_cid) || !m_sd.card()->readCSD(&m_csd) || !m_sd.card()->readOCR(&m_ocr)) {
       if (shell)
-        shell->write("SD: readInfo failed\n");
+        *shell << "SD: readInfo failed" << 0;
       return false;
     }
 
     if (!m_sd.card()->readSector(0, (uint8_t*) &m_mbr)) {
       if (shell)
-        shell->write("SD: MBR read failed.\n");
+        *shell << "SD: MBR read failed." << 0;
       return false;
     }
 
@@ -89,16 +196,14 @@ public:
   }
 
   bool cmd_sd_info(Shell& origin) {
-    char buf[64];
-
-    origin.triple("SdFat version: ", SD_FAT_VERSION_STR, "\n");
+    origin << "SdFat version: " << SD_FAT_VERSION_STR << 0;
 
     unsigned long dt;
     if (!init(&dt, &origin))
       return false;
 
-    sprintf(buf, "SD: init time: %ldms\n", dt);
-    origin.write(buf);
+    m_B.clear().printf("SD: init time: %ldms", dt);
+    origin << m_B << 0;
 
     const char * card_type = "Unknown";
 
@@ -122,27 +227,22 @@ public:
     default:
       break;
     }
-    origin.triple("SD: card type: ", card_type, "\n");
+    origin << "SD: card type: " << card_type << 0;
 
-    sprintf(buf, "SD: Manufacturer ID: %X; OEM ID: %c%c; Product: ", int(m_cid.mid), m_cid.oid[0], m_cid.oid[1]);
-    origin.write(buf);
+    m_B.clear().printf("SD: Manufacturer ID: %X; OEM ID: %c%c; Product: ", int(m_cid.mid), m_cid.oid[0], m_cid.oid[1]);
     for (uint8_t i = 0; i < 5; i++) {
-      buf[i] = m_cid.pnm[i];
+      m_B.append(m_cid.pnm[i]);
     }
-    buf[5] = 0;
-    origin.write(buf);
-    sprintf(buf, "; Version: %d.%d\n", int(m_cid.prv_n), int(m_cid.prv_m));
-    origin.write(buf);
-    sprintf(buf, "    Serial number: %lX", m_cid.psn);
-    origin.write(buf);
-    sprintf(buf, "; Manufacturing date: %d/%d", int(m_cid.mdt_month), (2000 + 16*m_cid.mdt_year_high + m_cid.mdt_year_low));
-    origin.write(buf);
-    sprintf(buf, "; OCR: %lX\n", m_ocr);
-    origin.write(buf);
+    m_B.printf("; Version: %d.%d", int(m_cid.prv_n), int(m_cid.prv_m));
+    origin << m_B << 0;
+
+    m_B.clear().printf("    Serial number: %lX; Manufacturing date: %d/%d; OCR: %lX",
+		       m_cid.psn, int(m_cid.mdt_month), (2000 + 16*m_cid.mdt_year_high + m_cid.mdt_year_low), m_ocr);
+    origin << m_B << 0;
 
     bool valid = true;
 
-    origin.write("SD: Partition Table\n");
+    origin << "SD: Partition Table" << 0;
 
     for (uint8_t ip = 1; ip < 5; ip++) {
       MbrPart_t *pt = &m_mbr.part[ip - 1];
@@ -150,13 +250,15 @@ public:
         valid = false;
       }
       char boot = (pt->boot == 0) ? '-' : ((pt->boot == 0x80) ? '*' : '?');
-      sprintf(buf, "  %c %d %02x %03d:%03d:%03d %03d:%03d:%03d %10ld %10ld\n", boot, ip, int(pt->type),
-              int(pt->beginCHS[0]), int(pt->beginCHS[1]), int(pt->beginCHS[2]), int(pt->endCHS[0]), int(pt->endCHS[1]), int(pt->endCHS[2]),
-              getLe32(pt->relativeSectors), getLe32(pt->totalSectors));
-      origin.write(buf);
+      m_B.clear().printf("  %c %d %02x %03d:%03d:%03d %03d:%03d:%03d %10ld %10ld",
+			 boot, ip, int(pt->type),
+			 int(pt->beginCHS[0]), int(pt->beginCHS[1]), int(pt->beginCHS[2]),
+			 int(pt->endCHS[0]), int(pt->endCHS[1]), int(pt->endCHS[2]),
+			 getLe32(pt->relativeSectors), getLe32(pt->totalSectors));
+      origin << m_B << 0;
     }
     if (!valid) {
-      origin.write("SD: MBR not valid, assuming Super Floppy format.\n");
+      origin << "SD: MBR not valid, assuming Super Floppy format." << 0;
     }
 
     return true;    
@@ -167,25 +269,27 @@ public:
       return false;
 
     if (!m_sd.volumeBegin()) {
-      origin.write("SD: Error! Filesystem error\n");
+      origin << "SD: Error! Filesystem error" << 0;
       return false;
     }
 
     if (!m_sd.exists(path)) {
-      origin.triple("SD: Error! '", path, "' not found\n");
+      m_B.clear() << "SD: Error! '" << path << "' not found";
+      origin << m_B << 0;
       return false;
     }
 
     FsFile file;
     if (!file.open(path, O_RDONLY)) {
-      origin.triple("SD: Error! Unable to read '", path, "'\n");
+      m_B.clear() << "SD: Error! Unable to read '" << path << "'";
+      origin << m_B << 0;
       return false;
     }
 
     if (file.isDir()) {
-      origin.write("SD: Folder\n");
+      origin << "SD: Folder" << 0;
     } else {
-      origin.write("SD: File\n");
+      origin << "SD: File" << 0;
     }
     file.close();
 
@@ -200,35 +304,40 @@ public:
 
     if (!m_sd.volumeBegin()) {
       if (shell)
-        shell->write("SD: Error! Filesystem error\n");
+        *shell << "SD: Error! Filesystem error" << 0;
       return false;
     }
 
     if (m_sd.exists(path)) {
       FsFile file;
       if (!file.open(path, O_RDONLY)) {
-        if (shell)
-          shell->triple("SD: Error! Unable to read '", path, "'\n");
+        if (shell) {
+          m_B.clear() << "SD: Error! Unable to read '" << path << "'";
+          *shell << m_B << 0;
+        }
         return false;
       }
       bool bIsFolder = file.isDir();
-      if (!bIsFolder && shell) 
-        shell->triple("SD: Error! '", path, "' exists and is not a folder\n");
+      if (!bIsFolder && shell) {
+        m_B.clear() << "SD: Error! '" << path << "' exists and is not a folder";
+        *shell << m_B << 0;
+      }
       file.close();
       return bIsFolder;
     }
 
     bool bCreated = m_sd.mkdir(path, true);
 
-    if (!bCreated && shell) 
-      shell->triple("SD: Error! Unable to create '", path, "'\n");
-
+    if (!bCreated && shell) {
+      m_B.clear() << "SD: Error! Unable to create '" << path << "'";
+      *shell << m_B << 0;
+    }
     return bCreated;
   }
 
   bool cmd_rm(Shell& origin, const char *path) {
     if (logging()) {
-      origin.write("SD: Logging is active; unable to delete file\n");
+      origin << "SD: Logging is active; unable to delete file" << 0;
       return false;
     }
 
@@ -236,12 +345,13 @@ public:
       return false;
 
     if (!m_sd.volumeBegin()) {
-      origin.write("SD: Error! Filesystem error\n");
+      origin << "SD: Error! Filesystem error" << 0;
       return false;
     }
 
     if (!m_sd.exists(path)) {
-      origin.triple("SD: Error! '", path, "' not found\n");
+      m_B.clear() << "SD: Error! '" << path << "' not found";
+      origin << m_B << 0;
       return false;
     }
 
@@ -252,7 +362,7 @@ public:
 
   bool cmd_cat(Shell& origin, const char *path) {
     if (logging()) {
-      origin.write("SD: Logging is active; unable to cat file\n");
+      origin << "SD: Logging is active; unable to cat file" << 0;
       return false;
     }
 
@@ -260,44 +370,29 @@ public:
       return false;
 
     if (!m_sd.volumeBegin()) {
-      origin.write("SD: Error! Filesystem error\n");
+      origin << "SD: Error! Filesystem error" << 0;
       return false;
     }
 
     if (!m_sd.exists(path)) {
-      origin.triple("SD: Error! '", path, "' not found\n");
+      m_B.clear() << "SD: Error! '" << path << "' not found";
+      origin << m_B << 0;
       return false;
     }
 
-    FsFile file;
-    if (!file.open(path, O_RDONLY)) {
-      origin.triple("SD: Error! Unable to read '", path, "'\n");
-      return false;
+    LoggerCatTask *tptr = m_cat_owner.pop();
+    if (tptr) {
+      if (tptr->assign(origin, m_B.clear(), path))
+        origin << *tptr;
+    } else {
+      origin << "SD: Error! (busy)" << 0;
     }
-
-    if (file.isDir()) {
-      origin.write("SD: Error! This is a folder\n");
-      return false;
-    }
-    origin.triple("SD: File '", path, "':\n");
-
-    while (file.available()) {
-      int ic = file.read();
-      if (ic < 0)
-        break;
-      char c = ic;
-      origin.write(&c, 1);
-    }
-    file.close();
-
-    origin.write("\nSD: === Done ===\n");
- 
     return true;
   }
 
   bool cmd_truncate(Shell& origin, const char *path) {
     if (logging()) {
-      origin.write("SD: Logging is active; unable to truncate file\n");
+      origin << "SD: Logging is active; unable to truncate file" << 0;
       return false;
     }
 
@@ -305,12 +400,13 @@ public:
       return false;
 
     if (!m_sd.volumeBegin()) {
-      origin.write("SD: Error! Filesystem error\n");
+      origin << "SD: Error! Filesystem error" << 0;
       return false;
     }
 
     if (!m_sd.exists(path)) {
-      origin.triple("SD: Error! '", path, "' not found\n");
+      m_B.clear() << "SD: Error! '" << path << "' not found";
+      origin << m_B << 0;
       return false;
     }
 
@@ -334,17 +430,18 @@ public:
         m_sd.chdir();
       }
     if (!bMetaValid) {
-      origin.write("SD: Error! Unable to read 'meta' data - unable to truncate\n");
+      origin << "SD: Error! Unable to read 'meta' data - unable to truncate" << 0;
       return false;
     }
 
     FsFile file;
     if (!file.open(path, O_RDWR)) {
-      origin.triple("SD: Error! Unable to open '", path, "'\n");
+      m_B.clear() << "SD: Error! Unable to open '" << path << "'";
+      origin << m_B << 0;
       return false;
     }
     if (file.size() > meta_length) {
-      origin.write("SD: Truncating log file...\n");
+      origin << "SD: Truncating log file..." << 0;
       file.rewind();
       while (meta_length-- > 0)
         file.read();
@@ -358,7 +455,7 @@ public:
   bool cmd_log_start(const char *path, Shell *shell = 0) {
     if (m_bLogging) {
       if (shell)
-        shell->write("Logging is already active.\n");
+        *shell << "Logging is already active." << 0;
       return false;
     }
 
@@ -367,19 +464,21 @@ public:
 
     if (!m_sd.volumeBegin()) {
       if (shell)
-        shell->write("SD: Error! Filesystem error\n");
+        *shell << "SD: Error! Filesystem error" << 0;
       return false;
     }
 
     if (!m_logfile.open(path, O_RDWR | O_CREAT | O_TRUNC)) {
-      if (shell)
-        shell->triple("Error! Failed to open ", path, " for writing.\n");
+      if (shell) {
+	m_B.clear() << "Error! Failed to open " << path << " for writing.";
+        *shell << m_B << 0;
+      }
       return false;
     }
 
     if (!m_logfile.preAllocate(LOG_FILE_SIZE)) {
       if (shell)
-        shell->write("Error! preAllocate failed\n");
+        *shell << "Error! preAllocate failed" << 0;
       m_logfile.close();
       return false;
     }
@@ -404,7 +503,7 @@ public:
   void cmd_log_stop(Shell *shell = 0) {
     if (!m_bLogging) {
       if (shell)
-        shell->writeIfAvailable("Logger is not active.\n");
+        *shell << "Logger is not active." << 0;
       return;
     }
 
@@ -420,23 +519,24 @@ public:
     }
   }
 
-  void cmd_log_write(const char *data, int length, Shell *shell = 0) {
+  void cmd_log_write(const ShellBuffer& buffer, Shell *shell = 0) {
     if (!m_bLogging)
       return;
 
     size_t n = m_rbuf.bytesUsed();
     if ((n + m_logfile.curPosition()) > (LOG_FILE_SIZE - 20)) {
       if (shell)
-        shell->writeIfAvailable("Logger: File full - quitting.\n");
+        *shell << "Logger: File full - quitting." << 0;
       cmd_log_stop();
       return;
     }
 
-    m_rbuf.write(data, length);
+    m_rbuf.write(buffer.buffer(), buffer.count());
 
     if (m_rbuf.getWriteError()) {
-      if (shell)
-        shell->writeIfAvailable("Logger: write error (data too fast for logging)\n");
+      if (shell) {
+        *shell << "Logger: write error (data too fast for logging)" << 0;
+      }
     }
   }
 
@@ -447,7 +547,7 @@ public:
     if (m_rbuf.bytesUsed() >= 512 && !m_logfile.isBusy()) {
       if (512 != m_rbuf.writeOut(512)) {
         if (shell)
-          shell->writeIfAvailable("Logger: write error - quitting.");
+          *shell << "Logger: write error - quitting." << 0;
         cmd_log_stop();
       } else if (m_bHaveMeta) {
         m_logfile_size += 512;

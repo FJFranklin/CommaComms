@@ -1,25 +1,21 @@
 /* -*- mode: c++ -*-
  * 
- * Copyright 2020-22 Francis James Franklin
+ * Copyright 2020-23 Francis James Franklin
  * 
  * Open Source under the MIT License - see LICENSE in the project's root folder
  */
 
-#include "config.hh"
-#include "MultiShell.hh"
-#include "Timer.hh"
-#include "CC_Serial.hh"
-#include "Encoders.hh"
+#include <Shell.hh>
 
-#ifdef ENABLE_GPS
-#include <Adafruit_GPS.h>
-#endif
+using namespace MultiShell;
 
 #ifdef Central_BufferLength
 #undef Central_BufferLength
 #endif
 #define Central_BufferLength 128 // print buffer length
 
+#include "config.hh"
+#include "Encoders.hh"
 #include "Claw.hh"
 
 /* Define globally
@@ -27,14 +23,13 @@
 ShellStream serial_zero(Serial);
 ShellStream serial_five(Serial5);
 
-ShellCommand sc_hello("hello",    "hello",                         "Say hi :-)");
-ShellCommand sc_prgps("gps",      "gps",                           "Get GPS reading and print.");
-ShellCommand sc_rclaw("claw",     "claw",                          "Get RoboClaw status.");
-ShellCommand sc_rmode("report",   "report [--list] [<mode>]",      "Get/Set/List reporting mode(s).");
-ShellCommand sc_opmod("op-mode",  "op-mode [--list] [<mode>]",     "Get/Set/List operating mode(s).");
-ShellCommand sc_shsum("summary",  "summary [on|off]",              "Print summary to shell.");
-ShellCommand sc_motor("M",        "M [<speed> [<speed>]]",         "Set motor speed(s).");
-ShellCommand sc_znpid("ZN",       "ZN [<Ku> [<Tu>]]",              "PID test, opt. with Ziegler-Nichols.");
+Command sc_hello("hello",    "hello",                         "Say hi :-)");
+Command sc_rclaw("claw",     "claw",                          "Get RoboClaw status.");
+Command sc_rmode("report",   "report [--list] [<mode>]",      "Get/Set/List reporting mode(s).");
+Command sc_opmod("op-mode",  "op-mode [--list] [<mode>]",     "Get/Set/List operating mode(s).");
+Command sc_shsum("summary",  "summary [on|off]",              "Print summary to shell.");
+Command sc_motor("M",        "M [<speed> [<speed>]]",         "Set motor speed(s).");
+Command sc_znpid("ZN",       "ZN [<Ku> [<Tu>]]",              "PID test, opt. with Ziegler-Nichols.");
 
 const char *s_report_mode[] = {
   "  0 (none)",
@@ -50,49 +45,32 @@ const char *s_op_mode[] = {
 };
 const unsigned char s_op_mode_count = sizeof(s_op_mode) / sizeof(const char *);
 
-class Central : public Timer, public CommaComms::CC_Responder, public ShellHandler {
+class Longitudinal : public Timer, public ShellHandler {
 private:
-  ShellCommandList m_list;
+  CommandList m_list;
   Shell  m_zero;
   Shell  m_five;
   Shell *m_last;
 
-  CC_Serial s2;
-  CC_Serial s4;
-
   char m_buffer[Central_BufferLength]; // temporary print buffer
   ShellBuffer m_B;
 
-#ifdef ENABLE_GPS
-  Adafruit_GPS *gps;
-#endif
-
-  elapsedMicros report;
   unsigned char reportMode;
   unsigned char opMode;
-  bool bReportGenerated;
   bool bShellSummary;
 
 public:
-  Central() :
+  Longitudinal() :
     m_list(this),
-    m_zero(serial_zero, m_list, '0', this),
-    m_five(serial_five, m_list, '5', this),
+    m_zero(serial_zero, m_list, '0'),
+    m_five(serial_five, m_list, '5'),
     m_last(0),
-    s2(Serial2, '2', this),
-    s4(Serial4, '4', this),
     m_B(m_buffer, Central_BufferLength),
-#ifdef ENABLE_GPS
-    gps(new Adafruit_GPS(&Serial3)),
-#endif
-    report(0),
     reportMode(0),
     opMode(0),
-    bReportGenerated(false),
     bShellSummary(false)
   {
     m_list.add(sc_hello);
-    m_list.add(sc_prgps);
     m_list.add(sc_rclaw);
     m_list.add(sc_rmode);
     m_list.add(sc_opmod);
@@ -103,42 +81,31 @@ public:
 #ifdef ENABLE_PID
     opMode = 1;
 #endif
-#ifdef ENABLE_GPS
-    gps->begin(9600);
-    gps->sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-    gps->sendCommand(PMTK_API_SET_FIX_CTL_5HZ);
-    gps->sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
-  //gps->sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
-  //gps->sendCommand(PGCMD_ANTENNA);
-    delay(1000);
-#endif
   }
-  virtual ~Central() {
+  virtual ~Longitudinal() {
     // ...
   }
-  bool reporting() {
-    return (reportMode == 1);
-  }
 
-  virtual void notify(CommaComms * C, const char * str) {
+  virtual void shell_notification(Shell& origin, const char *message) {
     if (Serial) {
-      Serial.print(C->name());
+      Serial.print(origin.name());
       Serial.print(": notify: ");
-      Serial.println(str);
+      Serial.println(message);
     }
   }
-  virtual void command(CommaComms * C, char code, unsigned long value) {
+  virtual void comma_command(Shell& origin, CommaCommand& command) {
 #ifdef ENABLE_FEEDBACK
     if (Serial) {
-      Serial.print(C->name());
+      Serial.print(origin.name());
       Serial.print(": command: ");
-      Serial.print(code);
+      Serial.print(command.m_command);
       Serial.print(": ");
-      Serial.println(value);
+      Serial.println(command.m_value);
     }
 #endif
+    unsigned long value = command.m_value;
 
-    switch(code) {
+    switch(command.m_command) {
     case 'f':
       MSpeed = (value > 127 ? 127 : value);
       TB_Params.target = (float) MSpeed / 10.0;
@@ -181,9 +148,6 @@ public:
     case 'E':
       TB_Params.D = (float) value / 100.0;
       break;
-    case 'R':
-      reportMode = (unsigned char) (value & 0xFF); // 0 for none; 1 for GPS-triggered reporting; 2 for buggy 'actual' at 10ms intervalsb
-      break;
     default:
       break;
     }
@@ -216,13 +180,6 @@ public:
         --M2;
       }
       s_roboclaw_set_M2(M2); // left
-
-      if ((reportMode == 3) && (MSpeed || M1_actual || M2_actual)) {
-        char buf[40];
-        snprintf(buf, 40, "%d %d/%d %d/%d", MSpeed, M1, M1_actual, M2, M2_actual);
-        s4.ui_print(buf);
-        s4.ui();
-      }
     }
 
     E1.sync();
@@ -239,13 +196,6 @@ public:
 
     TB_Params.actual = (TB_Params.actual_FL - TB_Params.actual_BR) / 2.0;
 
-    if ((reportMode == 2) && (TB_Params.actual_FL || TB_Params.actual_BL || TB_Params.actual_FR || TB_Params.actual_BR || TB_Params.actual)) {
-      m_B.clear();
-      m_B.printf("%6.2f %6.2f %6.2f %6.2f %6.2f", TB_Params.actual_FL, TB_Params.actual_BL, TB_Params.actual_FR, TB_Params.actual_BR, TB_Params.actual);
-      s4.write(m_B.buffer(), m_B.count());
-      s4.ui();
-    }
-
     if (opMode == 1) {
       s_buggy_update(10); // see Claw.hh
     }
@@ -254,7 +204,7 @@ public:
         s_roboclaw_set_M1(0); // right
         opMode = 2;
         if (m_last) {
-          *m_last << "done!" << Shell::eol;
+          *m_last << "done!" << 0;
           s_test_plot(*m_last, m_B);
         }
       }
@@ -262,13 +212,7 @@ public:
   }
 
   virtual void every_tenth(int tenth) { // runs once every tenth of a second, where tenth = 0..9
-    if (tenth == 4) {
-      // If actually generating output data (the GPS needs to be active for this if in mode 1) add an extra blink; should be dash-dot-dash-dot
-      digitalWrite(LED_BUILTIN, bReportGenerated || (reportMode == 2));
-      bReportGenerated = false;
-    } else {
-      digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8 || (reporting() && tenth == 9)); // double blink per second, or long single if in reporting mode 1
-    }
+    digitalWrite(LED_BUILTIN, tenth == 0 || tenth == 8);
 
     if (tenth == 0 || tenth == 5) { // i.e., every half-second
       bool bMoving = false;
@@ -278,10 +222,8 @@ public:
       summary_report(m_B, bMoving, bActive);
 
       if (bMoving || bActive) {
-        s2.command_write(m_B.buffer(), m_B.count());
-
         if (bShellSummary && m_last) {
-          *m_last << m_B << Shell::eol;
+          *m_last << m_B << 0;
         }
       }
     }
@@ -291,39 +233,6 @@ public:
     // ...
   }
 
-#ifdef ENABLE_GPS
-  inline void gps_time(ShellBuffer& B) {
-    B.printf("%02d/%02d/20%02d,%02d.%02d,%02d.%04u,",
-      (int) gps->day,
-      (int) gps->month,
-      (int) gps->year,
-      (int) gps->hour,
-      (int) gps->minute,
-      (int) gps->seconds,
-      (unsigned int) gps->milliseconds);
-  }
-  inline void gps_latitude(ShellBuffer& B) {
-    float coord = abs(gps->latitudeDegrees);
-    int degrees = (int) coord;
-    coord = (coord - (float) degrees) * 60;
-    int minutes = (int) coord;
-    coord = (coord - (float) minutes) * 60;
-
-    B.printf("%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lat ? gps->lat : ((gps->latitudeDegrees < 0) ? 'S' : 'N'));
-  }
-  inline void gps_longitude(ShellBuffer& B) {
-    float coord = abs(gps->longitudeDegrees);
-    int degrees = (int) coord;
-    coord = (coord - (float) degrees) * 60;
-    int minutes = (int) coord;
-    coord = (coord - (float) minutes) * 60;
-
-    B.printf("%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lon ? gps->lon : ((gps->longitudeDegrees < 0) ? 'W' : 'E'));
-  }
-  inline void gps_lat_lon(ShellBuffer& B) {
-    B.printf("%.6f,%.6f,", gps->latitudeDegrees, gps->longitudeDegrees);
-  }
-#endif // ENABLE_GPS
   void summary_report(ShellBuffer& B, bool& bMoving, bool& bActive, bool bCSV = false) {
     float vs1 = TB_Params.actual_FL; // Vehicle speed in km/h
     float vs2 = TB_Params.actual_BL;
@@ -342,159 +251,29 @@ public:
     summary_report(B, tmp1, tmp2, true);
   }
 
-  void generate_report() {
-    char buf[48];
-
-#ifdef ENABLE_GPS
-    snprintf(buf, 48, "%02d/%02d/20%02d,%02d.%02d,%02d.%04u,",
-      (int) gps->day,
-      (int) gps->month,
-      (int) gps->year,
-      (int) gps->hour,
-      (int) gps->minute,
-      (int) gps->seconds,
-      (unsigned int) gps->milliseconds);
-    s4.ui_print(buf);
-
-    if (gps->fix) {
-      float coord = abs(gps->latitudeDegrees);
-      int degrees = (int) coord;
-      coord = (coord - (float) degrees) * 60;
-      int minutes = (int) coord;
-      coord = (coord - (float) minutes) * 60;
-            
-      snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lat ? gps->lat : ((gps->latitudeDegrees < 0) ? 'S' : 'N'));
-      s4.ui_print(buf);
-            
-      coord = abs(gps->longitudeDegrees);
-      degrees = (int) coord;
-      coord = (coord - (float) degrees) * 60;
-      minutes = (int) coord;
-      coord = (coord - (float) minutes) * 60;
-            
-      snprintf(buf, 48, "%3d^%02d'%.4f\"%c,", degrees, minutes, coord, gps->lon ? gps->lon : ((gps->longitudeDegrees < 0) ? 'W' : 'E'));
-      s4.ui_print(buf);
-
-      snprintf(buf, 48, "%.6f,%.6f,", gps->latitudeDegrees, gps->longitudeDegrees);
-      s4.ui_print(buf);
-    } else {
-      s4.ui_print(",,,,");
-    }
-#endif
-
-    snprintf(buf, 48, "%10lu,", (unsigned long) millis());
-    s4.ui_print(buf);
-
-    snprintf(buf, 48, "%3d,%3d,%3d,", MSpeed, M1_actual, M2_actual);
-    s4.ui_print(buf);
-
-    float vs1 = TB_Params.actual_FL; // Vehicle speed in km/h
-    float vs2 = TB_Params.actual_BL;
-    float vs3 = TB_Params.actual_FR;
-    float vs4 = TB_Params.actual_BR;
-
-    snprintf(buf, 48, "%.3f,%.3f,%.3f,%.3f", vs1, vs2, vs3, vs4);
-    s4.ui_print(buf);
-    s4.ui();
-
-    bReportGenerated = true;
-  }
-
   virtual void tick() {
-    s2.update(); // important: housekeeping
-    s4.update(); // important: housekeeping
-
     m_zero.update();
     m_five.update();
-
-#ifdef ENABLE_GPS
-    if (gps->available()) {
-      gps->read();
-      if (gps->newNMEAreceived()) {
-        if (gps->parse(gps->lastNMEA())) {
-          if (reporting() && report > 100000) {
-            report = 0;
-            generate_report();
-          }
-        }
-      }
-    }
-#endif
-  }
-  void cmd_gps(Shell& origin) {
-    origin << "GPS: ";
-#ifndef ENABLE_GPS
-    origin << "(disabled)" << Shell::eol;
-#else
-    bool bTimeOut = true;
-    bool bNMEA = false;
-
-    unsigned long t0 = millis();
-
-    while (millis() - t0 < 1000) {
-      if (gps->available()) {
-        gps->read();
-        bTimeOut = false;
-        if (gps->newNMEAreceived()) {
-          bNMEA = true;
-          break;
-        }
-      }
-    }
-    if (bTimeOut) {
-      origin << "Timeout" << Shell::eol;
-      return;
-    }
-    if (!bNMEA) {
-      origin << "No NMEA" << Shell::eol;
-      return;
-    }
-    origin << "NMEA: ";
-
-    if (!gps->parse(gps->lastNMEA())) {
-      origin << "Parse error" << Shell::eol;
-      return;
-    }
-    origin << "OK" << Shell::eol;
-
-    m_B.clear();
-    gps_time(m_B);
-    origin << m_B;
-
-    if (!gps->fix) {
-      origin << " (no fix)" << Shell::eol;
-      return;
-    }
-
-    m_B.clear();
-    gps_latitude(m_B);
-    gps_longitude(m_B);
-    gps_lat_lon(m_B);
-    origin << m_B << Shell::eol;
-#endif
   }
   void cmd_claw(Shell& origin) {
     origin << "RoboClaw: ";
 #ifndef ENABLE_ROBOCLAW
-    origin << "(disabled)" << Shell::eol;
+    origin << "(disabled)" << 0;
 #else
     if (s_claw_writable) {
-      origin << "OK" << Shell::eol;
+      origin << "OK" << 0;
     } else {
-      origin << s_claw_error << Shell::eol;
+      origin << s_claw_error << 0;
     }
 #endif
   }
-  virtual CommandError shell_command(Shell& origin, CommandArgs& args) {
+  virtual CommandError shell_command(Shell& origin, Args& args) {
     CommandError ce = ce_Okay;
 
     m_last = &origin;
 
     if (args == "hello") {
-      origin << "Hi!" << Shell::eol;
-    }
-    else if (args == "gps") {
-      cmd_gps(origin);
+      origin << "Hi!" << 0;
     }
     else if (args == "claw") {
       cmd_claw(origin);
@@ -502,11 +281,11 @@ public:
     else if (args == "report") {
       ++args;
       if (args == "") { // print current reporting mode
-        origin << s_report_mode[reportMode] << Shell::eol;
+        origin << s_report_mode[reportMode] << 0;
       }
       else if (args == "--list") { // list reporting modes
         for (int ir = 0; ir < s_report_mode_count; ir++) {
-          origin << s_report_mode[ir] << Shell::eol;
+          origin << s_report_mode[ir] << 0;
         }
       }
       else { // set current reporting mode
@@ -514,13 +293,13 @@ public:
         if (sscanf(args.c_str(), "%d", &ir) == 1) {
           if ((ir >= 0) && (ir < s_report_mode_count)) {
             reportMode = ir;
-            origin << s_report_mode[reportMode] << Shell::eol;
+            origin << s_report_mode[reportMode] << 0;
           } else {
-            origin << "Invalid report mode" << Shell::eol;
+            origin << "Invalid report mode" << 0;
             ce = ce_IncorrectUsage;
           }
         } else {
-          origin << "Expected integer" << Shell::eol;
+          origin << "Expected integer" << 0;
           ce = ce_IncorrectUsage;
         }
       }
@@ -528,11 +307,11 @@ public:
     else if (args == "op-mode") {
       ++args;
       if (args == "") { // print current operating mode
-        origin << s_op_mode[opMode] << Shell::eol;
+        origin << s_op_mode[opMode] << 0;
       }
       else if (args == "--list") { // list operating modes
         for (int ir = 0; ir < s_op_mode_count; ir++) {
-          origin << s_op_mode[ir] << Shell::eol;
+          origin << s_op_mode[ir] << 0;
         }
       }
       else { // set current operating mode
@@ -540,13 +319,13 @@ public:
         if (sscanf(args.c_str(), "%d", &ir) == 1) {
           if ((ir >= 0) && (ir < s_op_mode_count)) {
             opMode = ir;
-            origin << s_op_mode[opMode] << Shell::eol;
+            origin << s_op_mode[opMode] << 0;
           } else {
-            origin << "Invalid operating mode" << Shell::eol;
+            origin << "Invalid operating mode" << 0;
             ce = ce_IncorrectUsage;
           }
         } else {
-          origin << "Expected integer" << Shell::eol;
+          origin << "Expected integer" << 0;
           ce = ce_IncorrectUsage;
         }
       }
@@ -554,7 +333,7 @@ public:
     else if (args == "summary") {
       ++args;
       if (args == "") {
-        origin << "Shell summary: " << (bShellSummary ? "on" : "off") << "" << Shell::eol;
+        origin << "Shell summary: " << (bShellSummary ? "on" : "off") << "" << 0;
       }
       else if (args == "on") {
         bShellSummary = true;
@@ -577,11 +356,11 @@ public:
             MSpeed = ir;
             TB_Params.target = (float) MSpeed / 10.0;
           } else {
-            origin << "Invalid speed" << Shell::eol;
+            origin << "Invalid speed" << 0;
             ce = ce_IncorrectUsage;
           }
         } else {
-          origin << "Expected integer" << Shell::eol;
+          origin << "Expected integer" << 0;
           ce = ce_IncorrectUsage;
         }
       } else if (opMode == 2) {
@@ -597,19 +376,19 @@ public:
                 s_roboclaw_set_M2(ir1); // left
                 s_roboclaw_set_M1(ir2); // right
               } else {
-                origin << "Invalid speed" << Shell::eol;
+                origin << "Invalid speed" << 0;
                 ce = ce_IncorrectUsage;
               }
             } else {
-              origin << "Expected two integers" << Shell::eol;
+              origin << "Expected two integers" << 0;
               ce = ce_IncorrectUsage;
             }
           } else {
-            origin << "Invalid speed" << Shell::eol;
+            origin << "Invalid speed" << 0;
             ce = ce_IncorrectUsage;
           }
         } else {
-          origin << "Expected two integers" << Shell::eol;
+          origin << "Expected two integers" << 0;
           ce = ce_IncorrectUsage;
         }
       }
@@ -621,23 +400,23 @@ public:
       if (args != "") {
         if (sscanf(args.c_str(), "%f", &Ku) == 1) {
           if (Ku <= 0) {
-            origin << "Expected Ku > 0" << Shell::eol;
+            origin << "Expected Ku > 0" << 0;
             ce = ce_IncorrectUsage;
           }
           ++args;
           if (args != "") {
             if (sscanf(args.c_str(), "%f", &Tu_ms) == 1) {
               if (Tu_ms <= 0) {
-                origin << "Expected Tu_ms > 0" << Shell::eol;
+                origin << "Expected Tu_ms > 0" << 0;
                 ce = ce_IncorrectUsage;
               }
             } else {
-              origin << "Expected float" << Shell::eol;
+              origin << "Expected float" << 0;
               ce = ce_IncorrectUsage;
             }
           }
         } else {
-          origin << "Expected float" << Shell::eol;
+          origin << "Expected float" << 0;
           ce = ce_IncorrectUsage;
         }
       }
@@ -657,16 +436,6 @@ void setup() {
   serial_zero.begin(115200); // Shell on USB
   serial_five.begin(115200); // Shell (alternate)
 
-  while (millis() < 100) { // comms with Feather
-    if (Serial2) break;
-  }
-  Serial2.begin(115200);
-
-  while (millis() < 100) { // data-out to the logger
-    if (Serial4) break;
-  }
-  Serial4.begin(115200);
-
   s_roboclaw_init(); // Setup RoboClaw
 
   E1.init(E1_ChA, E1_ChB, ENCODER_PPR, false); // set up encoder 1
@@ -676,7 +445,7 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
 
-  Central().run();
+  Longitudinal().run();
 }
 
 void loop() {

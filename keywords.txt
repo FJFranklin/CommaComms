@@ -1,6 +1,5 @@
 
 
-
 #######################################
 # Syntax Coloring Map For RWS_NMEA
 #######################################
@@ -10,16 +9,19 @@
 #######################################
 
 CommaComms	KEYWORD1
+CommandArgs	KEYWORD1
+CommandError	KEYWORD1
 CC_Responder	KEYWORD1
 CC_FIFO	KEYWORD1
 CC_Serial	KEYWORD1
+InputState	KEYWORD1
+Responder	KEYWORD1
 Shell	KEYWORD1
-ShellHandler	KEYWORD1
+ShellBuffer	KEYWORD1
 ShellCommandList	KEYWORD1
 ShellCommand	KEYWORD1
-CommandArgs	KEYWORD1
-CommandError	KEYWORD1
-InputState	KEYWORD1
+ShellHandler	KEYWORD1
+ShellStream	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
@@ -27,12 +29,17 @@ InputState	KEYWORD1
 
 active	KEYWORD2
 add	KEYWORD2
+append	KEYWORD2
 available	KEYWORD2
 availableToWrite	KEYWORD2
+begin	KEYWORD2
+buffer	KEYWORD2
+check_connection	KEYWORD2
 clear	KEYWORD2
 command	KEYWORD2
 command_print	KEYWORD2
 command_send	KEYWORD2
+count	KEYWORD2
 c_str	KEYWORD2
 default_handler	KEYWORD2
 eol	KEYWORD2
@@ -44,12 +51,16 @@ next	KEYWORD2
 notify	KEYWORD2
 pack754_32	KEYWORD2
 pop	KEYWORD2
+printf	KEYWORD2
 push	KEYWORD2
 read	KEYWORD2
 set_default_handler	KEYWORD2
+set_responder	KEYWORD2
 shell_command	KEYWORD2
+sync_read_begin	KEYWORD2
+sync_write_begin	KEYWORD2
+sync_write_end	KEYWORD2
 tick	KEYWORD2
-triple	KEYWORD2
 ui	KEYWORD2
 ui_print	KEYWORD2
 unpack754_32	KEYWORD2
@@ -67,6 +78,7 @@ data_end	KEYWORD2
 data_start	KEYWORD2
 m_Responder	KEYWORD2
 m_arg	KEYWORD2
+m_bt_onboard	KEYWORD2
 m_buffer	KEYWORD2
 m_bSOL	KEYWORD2
 m_bUI	KEYWORD2
@@ -94,6 +106,7 @@ m_usbser	KEYWORD2
 # Constants (LITERAL1)
 #######################################
 
+FEATHER_M0_BTLE	LITERAL1
 MultiShell_BufferSize	LITERAL1
 ce_Okay	LITERAL1
 ce_IncorrectUsage	LITERAL1

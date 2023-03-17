@@ -288,7 +288,7 @@ static void s_test_plot(Shell& shell, ShellBuffer& B) {
 
   B.clear();
   B.printf("      P=%f, I=%f, D=%f", TestData.P, TestData.I, TestData.D);
-  shell << B << Shell::eol;
+  shell << B << 0;
 
   for (int r = data_max; r >= data_min; r--) {
     B.clear();
@@ -307,7 +307,7 @@ static void s_test_plot(Shell& shell, ShellBuffer& B) {
         fill = '*';
       B << fill;
     }
-    shell << B << Shell::eol;
+    shell << B << 0;
   }
 }
 

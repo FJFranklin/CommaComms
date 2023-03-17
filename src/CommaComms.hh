@@ -1,4 +1,4 @@
-/* Copyright 2019-21 Francis James Franklin
+/* Copyright 2019-22 Francis James Franklin
  * 
  * Open Source under the MIT License - see LICENSE in the project's root folder
  */
@@ -6,54 +6,50 @@
 #ifndef cariot_CommaComms_hh
 #define cariot_CommaComms_hh
 
-#include <Arduino.h>
-#include "CC_FIFO.hh"
+#include <ShellUtils.hh>
+#include <ShellBuffer.hh>
 
-class CommaComms {
-public:
-  static float unpack754_32(uint32_t i);
-  static uint32_t pack754_32(float f);
+namespace MultiShell {
 
-  class CC_Responder {
+  class CommaCommand {
   public:
-    virtual void notify(CommaComms * C, const char * str) = 0;
-    virtual void command(CommaComms * C, char code, unsigned long value) = 0;
+    char          m_command;
+    unsigned long m_value;
 
-    virtual ~CC_Responder() { }
+    CommaCommand(char command = 0, unsigned long value = 0) :
+      m_command(command),
+      m_value(value)
+    {
+      // ...
+    }
+    ~CommaCommand() {
+      // ...
+    }
+    ShellBuffer& append(ShellBuffer& buffer) const {
+      buffer.printf("%c%lu,", m_command, m_value);
+      return buffer;
+    }
   };
 
-protected:
-  CC_Responder * m_Responder;
-  CC_FIFO<char> m_fifo;
+  class Comma {
+  public:
+    static float unpack754_32(uint32_t i);
+    static uint32_t pack754_32(float f);
 
-private:
-  int m_length;
-  char m_buffer[16]; // command receive buffer
-  bool m_bUI;        // UI text mode
-  bool m_bSOL;       // Start of line
+  private:
+    int  m_length;
+    char m_buffer[16]; // command receive buffer
+  public:
+    Comma() : m_length(0) {
+      // ...
+    }
+    ~Comma() {
+      // ...
+    }
 
-public:
-  CommaComms(CC_Responder * R);
-  virtual ~CommaComms();
-  virtual const char * name() const; // override this method to provide ID
-  virtual void update();             // override this method to manage IO streams
+    bool push(char c, CommaCommand& C); // returns true & updates C if a command is received
+  };
 
-  virtual void command_send(char code, unsigned long value = 0);
-  virtual void command_print(const char * str);
-  virtual void ui(char c = 0);
-  void ui_print(const char * str) {
-    if (str)
-      while(*str) {
-        ui(*str++);
-      }
-  }
-
-  virtual const char * eol();
-
-protected:
-  void notify(const char * str);
-  void command(char code, unsigned long value);
-  void push(char c);
-};
+} // MultiShell
 
 #endif /* !cariot_CommaComms_hh */
