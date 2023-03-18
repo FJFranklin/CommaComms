@@ -8,110 +8,141 @@
 # Datatypes (KEYWORD1)
 #######################################
 
-CommaComms	KEYWORD1
-CommandArgs	KEYWORD1
+Args	KEYWORD1
+Comma	KEYWORD1
+CommaCommand	KEYWORD1
+Command	KEYWORD1
 CommandError	KEYWORD1
-CC_Responder	KEYWORD1
-CC_FIFO	KEYWORD1
-CC_Serial	KEYWORD1
+CommandList	KEYWORD1
+Dispatcher	KEYWORD1
+FIFO	KEYWORD1
 InputState	KEYWORD1
+ItemOwner	KEYWORD1
+LinkedItem	KEYWORD1
+LinkedItemOwner	KEYWORD1
+LinkedList	KEYWORD1
+Option	KEYWORD1
+OptionList	KEYWORD1
+PlotDemo	KEYWORD1
+PlotTask	KEYWORD1
+PrintableItem	KEYWORD1
+PrintableList	KEYWORD1
+Repository	KEYWORD1
 Responder	KEYWORD1
 Shell	KEYWORD1
 ShellBuffer	KEYWORD1
-ShellCommandList	KEYWORD1
-ShellCommand	KEYWORD1
 ShellHandler	KEYWORD1
+ShellPlot	KEYWORD1
 ShellStream	KEYWORD1
+Task	KEYWORD1
+Task_Buffer	KEYWORD1
+Task_Comma	KEYWORD1
+Task_OffsetString	KEYWORD1
+Task_Printable	KEYWORD1
+TaskList	KEYWORD1
+TaskOwner	KEYWORD1
+Timer	KEYWORD1
+VirtualSerial	KEYWORD1
 
 #######################################
 # Methods and Functions (KEYWORD2)
 #######################################
 
-active	KEYWORD2
 add	KEYWORD2
 append	KEYWORD2
+assign	KEYWORD2
 available	KEYWORD2
-availableToWrite	KEYWORD2
+availableForWrite	KEYWORD2
 begin	KEYWORD2
 buffer	KEYWORD2
+c_str	KEYWORD2
+capacity	KEYWORD2
 check_connection	KEYWORD2
 clear	KEYWORD2
+comma_command	KEYWORD2
 command	KEYWORD2
-command_print	KEYWORD2
-command_send	KEYWORD2
 count	KEYWORD2
-c_str	KEYWORD2
+current	KEYWORD2
 default_handler	KEYWORD2
-eol	KEYWORD2
+demo	KEYWORD2
+description	KEYWORD2
+dispatch_buffer	KEYWORD2
+dispatch_command	KEYWORD2
+dispatch_offset_string	KEYWORD2
+dispatch_printable_list	KEYWORD2
+every_10ms	KEYWORD2
+every_milli	KEYWORD2
+every_second	KEYWORD2
+every_tenth	KEYWORD2
+finish	KEYWORD2
 first	KEYWORD2
+handler	KEYWORD2
+init	KEYWORD2
 is_empty	KEYWORD2
+item	KEYWORD2
+linked_item	KEYWORD2
+linked_item_adopt	KEYWORD2
+linked_item_pop	KEYWORD2
+linked_item_push	KEYWORD2
 lookup	KEYWORD2
 name	KEYWORD2
 next	KEYWORD2
-notify	KEYWORD2
 pack754_32	KEYWORD2
 pop	KEYWORD2
+pop_and_return	KEYWORD2
+prepare	KEYWORD2
+printable	KEYWORD2
+printable_count	KEYWORD2
 printf	KEYWORD2
+process_task	KEYWORD2
+process_tasks	KEYWORD2
 push	KEYWORD2
+push_eol	KEYWORD2
 read	KEYWORD2
+repository_status	KEYWORD2
+reset	KEYWORD2
+respond_to_RSVP	KEYWORD2
+return_to_owner	KEYWORD2
+select	KEYWORD2
+selection	KEYWORD2
 set_default_handler	KEYWORD2
+set_eol	KEYWORD2
+set_handler	KEYWORD2
+set_name	KEYWORD2
 set_responder	KEYWORD2
 shell_command	KEYWORD2
+shell_notification	KEYWORD2
+space	KEYWORD2
+status	KEYWORD2
+stop	KEYWORD2
+stream_notification	KEYWORD2
 sync_read_begin	KEYWORD2
 sync_write_begin	KEYWORD2
 sync_write_end	KEYWORD2
+task	KEYWORD2
 tick	KEYWORD2
-ui	KEYWORD2
-ui_print	KEYWORD2
+tmp_buffer	KEYWORD2
 unpack754_32	KEYWORD2
 update	KEYWORD2
+usage	KEYWORD2
 write	KEYWORD2
-writeIfAvailable	KEYWORD2
+write_char	KEYWORD2
+write_eol	KEYWORD2
 
 #######################################
 # Instances (KEYWORD2)
 #######################################
-
-buffer_end	KEYWORD2
-buffer_start	KEYWORD2
-data_end	KEYWORD2
-data_start	KEYWORD2
-m_Responder	KEYWORD2
-m_arg	KEYWORD2
-m_bt_onboard	KEYWORD2
-m_buffer	KEYWORD2
-m_bSOL	KEYWORD2
-m_bUI	KEYWORD2
-m_command	KEYWORD2
-m_command_list	KEYWORD2
-m_default_handler	KEYWORD2
-m_description	KEYWORD2
-m_fifo	KEYWORD2
-m_handler	KEYWORD2
-m_help	KEYWORD2
-m_id	KEYWORD2
-m_index	KEYWORD2
-m_length	KEYWORD2
-m_list_first	KEYWORD2
-m_list_last	KEYWORD2
-m_next	KEYWORD2
-m_serial	KEYWORD2
-m_state	KEYWORD2
-m_swap	KEYWORD2
-m_usage	KEYWORD2
-m_usbser	KEYWORD2
 
 
 #######################################
 # Constants (LITERAL1)
 #######################################
 
-FEATHER_M0_BTLE	LITERAL1
-MultiShell_BufferSize	LITERAL1
 ce_Okay	LITERAL1
 ce_IncorrectUsage	LITERAL1
 ce_UnhandledCommand	LITERAL1
 ce_OtherError	LITERAL1
+is_CC	LITERAL1
 is_Start	LITERAL1
 is_Discard	LITERAL1
 is_Processing	LITERAL1
