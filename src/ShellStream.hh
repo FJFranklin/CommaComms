@@ -10,11 +10,11 @@
 
 #include <ShellUtils.hh>
 
-namespace MultiShell {
-
 #ifdef FEATHER_M0_BTLE
-  class Adafruit_BluefruitLE_SPI;
+class Adafruit_BluefruitLE_SPI;
 #endif
+
+namespace MultiShell {
 
   class ShellBuffer;
 

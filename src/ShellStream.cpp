@@ -8,10 +8,13 @@
 #include "ShellStream.hh"
 #include "ShellBuffer.hh"
 
+#ifdef FEATHER_M0_BTLE
+#include "Adafruit_BluefruitLE_SPI.h"
+#endif
+
 using namespace MultiShell;
 
 #ifdef FEATHER_M0_BTLE
-#include "Adafruit_BluefruitLE_SPI.h"
 
 Adafruit_BluefruitLE_SPI ShellStream::m_bt_onboard(8, 7, 4);
 
